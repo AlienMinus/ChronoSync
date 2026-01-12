@@ -182,15 +182,45 @@ h3 {
 }
 
 /* Schedule Grid */
+/* Wrapper handles scrolling inside the flex layout */
+.schedule-wrapper {
+    flex: 1;
+    min-width: 0; /* allow flex child to shrink and enable overflow */
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
 .schedule-table { 
     width: 100%; 
+    min-width: 720px; /* ensure table inherently large enough so wrapper can scroll */
     border-collapse: separate; 
     border-spacing: 0;
     table-layout: fixed; 
     font-size: 0.8rem; 
     border: 1px solid var(--border-color);
     border-radius: var(--radius);
+    /* overflow moved to wrapper */
+}
+
+/* Make non-day columns a reasonable minimum so they don't collapse and force overflow */
+.schedule-table th,
+.schedule-table td:not(.day-label) {
+    min-width: 140px;
+}
+
+/* Ensure cell content wraps and truncates safely */
+.schedule-table td .scheduled-item {
+    max-width: 100%;
+    box-sizing: border-box;
+    word-break: break-word;
     overflow: hidden;
+}
+
+.schedule-table td .scheduled-item strong {
+    white-space: nowrap; 
+    overflow: hidden; 
+    text-overflow: ellipsis;
+    display: block;
 }
 
 .schedule-table th { 
