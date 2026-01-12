@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Weekly Timetable</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+<body>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle Dark Mode">🌓</button>
+    <script>
+        // Apply theme immediately
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.body.setAttribute('data-theme', savedTheme);
+    </script>
+
+    <div class="container-wide">
+    <div id="timetable-pdf">
+    <h1>Weekly Class Schedule</h1>
+
+    <div class="table-wrapper">
+        <table class="view-table">
+            <thead>
+                <tr>
+                    <th style="width: 100px;">Day</th>
+                    {% for p in periods_order %}
+                        {% if p.startswith('break_') %}
+                            {# Extract index from break_X #}
+                            {% set b_idx = p.split('_')[1] | int %}
+                            <th class="break-header">{{ breaks[b_idx].name }}</th>
+                        {% else %}
+                            <th>{{ p }}<br><small>{{ header_times[p] }}</small></th>
+                        {% endif %}
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for day in days %}
+                <tr>
+                    <td class="day-label">{{ day }}</td>
+                    
+                    {# Use dynamic periods order #}
+                    {% for col in periods_order %}
+                        {% set cell_data = grid_schedule[day].get(col) %}
+                        
+                        {% if cell_data == 'occupied' %}
+                            {# Do nothing, this cell is covered by a colspan #}
+                        {% elif col.startswith('break_') %}
+                            {% set b_idx = col.split('_')[1] | int %}
+                            <td class="break-cell">
+                                <div class="break-text">{{ breaks[b_idx].name }}</div>
+                            </td>
+                        {% else %}
+                            <td {% if cell_data and cell_data.colspan > 1 %}colspan="{{ cell_data.colspan }}"{% endif %} {% if cell_data and cell_data.is_gap %}class="gap-slot"{% endif %}>
+                                {% if cell_data and not cell_data.is_gap %}
+                                    <div class="class-block" 
+                                         style="--bg-color: {{ cell_data.bg_color }}; --border-color: {{ cell_data.color }}; --text-color: {{ cell_data.color }};">
+                                        <span class="subject">{{ cell_data.subject }}</span>
+                                        <span class="time">⏰ {{ cell_data.start }} - {{ cell_data.end }}</span>
+                                        {% if cell_data.info %}
+                                        <span class="info-label">ℹ️ {{ cell_data.info }}</span>
+                                        {% endif %}
+                                    </div>
+                                {% elif cell_data and cell_data.is_gap %}
+                                    <span class="gap-label">Free</span>
+                                {% endif %}
+                            </td>
+                        {% endif %}
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    </div>
+
+    <form action="/export" method="POST" id="export-form">
+        <input type="hidden" name="schedule_data" value='{{ export_data | tojson }}'>
+        <input type="hidden" name="breaks" value='{{ breaks | tojson }}'>
+        <input type="hidden" name="slot_starts" value='{{ slot_starts | tojson }}'>
+        <input type="hidden" name="slot_durations" value='{{ slot_durations | tojson }}'>
+    </form>
+
+    <div class="action-buttons">
+        <a href="/" class="btn-back">Edit Schedule</a>
+        <button onclick="downloadPDF()" class="btn-download">Download PDF</button>
+        <button onclick="document.getElementById('export-form').submit()" class="btn-download" style="background-color: #217346;">Export Excel</button>
+        <button onclick="printTimetable()" class="btn-download" style="background-color: #17a2b8;">Print</button>
+    </div>
+    </div>
+
+    <script>
+        function downloadPDF() {
+            const element = document.getElementById('timetable-pdf');
+            const opt = {
+                margin:       0.5,
+                filename:     'timetable.pdf',
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2 },
+                jsPDF:        { unit: 'in', format: 'letter', orientation: 'landscape' }
+            };
+            html2pdf().set(opt).from(element).save();
+        }
+
+        function printTimetable() {
+            const printWindow = window.open('', '_blank');
+            const title = document.querySelector('h1').outerHTML;
+            const table = document.querySelector('.table-wrapper').outerHTML;
+            const cssLink = document.querySelector('link[rel="stylesheet"]').href;
+            
+            printWindow.document.write(`
+                <html>
+                <head>
+                    <title>Print Timetable</title>
+                    <link rel="stylesheet" href="${cssLink}">
+                </head>
+                <body>
+                    <div class="container-wide" style="margin: 20px auto;">
+                        ${title}
+                        ${table}
+                    </div>
+                    <script>
+                        window.onload = function() { window.print(); }
+                    <\/script>
+                </body>
+                </html>
+            `);
+            printWindow.document.close();
+        }
+
+        function toggleTheme() {
+            const body = document.body;
+            const currentTheme = body.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            body.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+        }
+    </script>
+</body>
+</html>

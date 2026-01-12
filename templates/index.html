@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.png') }}" type="image/png">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Timetable</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body onload="loadState()">
+    <button class="btn-help" onclick="openHelp()" title="Help">❓</button>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle Dark Mode">🌓</button>
+    <script>
+        // Apply theme immediately to prevent flash
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.body.setAttribute('data-theme', savedTheme);
+    </script>
+
+    <div class="container-narrow">
+    <h1>📅 Class Schedule Builder</h1>
+
+    <div class="form-container">
+        
+        <!-- 1. Subject Pool -->
+        <div class="pool-section">
+            <div style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #dee2e6;">
+                <div onclick="toggleSection('time-settings')" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;">
+                    <h3 style="font-size: 1rem; margin: 0;">Time Slot Settings</h3>
+                    <span id="icon-time-settings" style="font-size: 0.8rem; color: #666;">▶</span>
+                </div>
+                <div id="time-settings" style="display: none; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+                    <div id="time-slots-container" style="grid-column: span 2; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    {% for i in range(1, 3) %}
+                    {% set default_times = {'1': '08:15', '2': '09:10', '3': '10:05', '4': '11:30', '5': '12:25', '6': '13:20'} %}
+                    <div class="slot-row" style="grid-column: span 2; display: flex; gap: 10px; align-items: flex-end; border-bottom: 1px solid #f0f0f0; padding-bottom: 5px;">
+                        <div style="flex: 1;">
+                            <label style="display:block; font-size: 0.8rem; color: #666; margin-bottom: 2px;">Slot {{ i }} Start</label>
+                            <input type="time" name="slot_{{ i }}" form="schedule-form" value="{{ default_times[i|string] }}" onchange="validateTimeSlots(); saveState()" style="width: 100%; padding: 6px; border: 1px solid var(--input-border); border-radius: 4px; box-sizing: border-box; font-size: 0.85rem; background: var(--input-bg); color: var(--text-primary);">
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="display:block; font-size: 0.8rem; color: #666; margin-bottom: 2px;">Duration (m)</label>
+                            <input type="number" name="duration_{{ i }}" form="schedule-form" value="55" onchange="validateTimeSlots(); saveState()" style="width: 100%; padding: 6px; border: 1px solid var(--input-border); border-radius: 4px; box-sizing: border-box; font-size: 0.85rem; background: var(--input-bg); color: var(--text-primary);">
+                        </div>
+                    </div>
+                    {% endfor %}
+                    </div>
+                    <div style="grid-column: span 2; display: flex; gap: 10px;">
+                        <button type="button" onclick="addSlot()" style="flex: 1; background: #e9ecef; border: 1px dashed #ced4da; color: #495057; padding: 8px; border-radius: 4px; cursor: pointer; font-weight: bold;">+ Add Slot</button>
+                        <button type="button" onclick="removeSlot()" style="flex: 1; background: #f8d7da; border: 1px dashed #f5c6cb; color: #721c24; padding: 8px; border-radius: 4px; cursor: pointer; font-weight: bold;">- Remove Slot</button>
+                        <button type="button" onclick="clearAllSlots()" style="flex: 1; background: #fff3cd; border: 1px dashed #ffeeba; color: #856404; padding: 8px; border-radius: 4px; cursor: pointer; font-weight: bold;">Reset Slots</button>
+                    </div>
+                </div>
+            </div>
+
+            <h3>1. Add Subjects to Pool</h3>
+            <div class="pool-controls">
+                <input type="text" id="new-subject-name" placeholder="Enter subject name (e.g. Math, Physics)">
+                <input type="color" id="new-subject-color" value="#3788d8" class="color-picker" title="Choose Subject Color">
+                <button type="button" class="btn-add-subject" onclick="addSubjectToPool()">Add</button>
+            </div>
+            <div id="subject-pool" class="subject-list">
+                <!-- Draggable subjects will appear here -->                
+            </div>
+            <p class="help-text">Drag these subjects into the timetable below.</p>
+            
+            <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #dee2e6;">
+                <div onclick="toggleSection('break-settings')" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;">
+                    <h3 style="font-size: 1rem; margin: 0;">Break Settings</h3>
+                    <span id="icon-break-settings" style="font-size: 0.8rem; color: #666;">▶</span>
+                </div>
+                <div id="break-settings" style="display: none; margin-top: 10px;">
+                    <div class="break-toggle-wrapper">
+                        <label class="switch">
+                            <input type="checkbox" id="breaks_enabled" name="breaks_enabled" onchange="toggleBreaksEnabled(); saveState();" checked>
+                            <span class="slider round"></span>
+                        </label>
+                        <span class="toggle-label">Enable Breaks</span>
+                    </div>
+                    <div id="breaks-content">
+                        <div id="breaks-container">
+                            <!-- Dynamic breaks will be added here -->
+                        </div>
+                        <div class="break-actions">
+                            <button type="button" onclick="addBreak()" style="flex: 1; background: var(--bg-body); border: 1px dashed var(--border-color); color: var(--text-secondary); padding: 8px; border-radius: 4px; cursor: pointer; font-weight: bold;">+ Add Break</button>
+                            <button type="button" onclick="removeBreak()" style="flex: 1; background: rgba(220, 53, 69, 0.1); border: 1px dashed var(--danger-color); color: var(--danger-color); padding: 8px; border-radius: 4px; cursor: pointer; font-weight: bold;">- Remove Break</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. Schedule Grid -->
+        <form action="/generate" method="POST" id="schedule-form" onsubmit="saveState()">
+            <input type="hidden" name="total_slots" id="total_slots" value="2">
+            <h3>2. Arrange Schedule</h3>
+            <table class="schedule-table" id="schedule-table">
+                <thead>
+                    <tr id="schedule-header-row">
+                        <th>Day</th>
+                        <th>1</th>
+                        <th>2</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for day in days %}
+                    <tr class="schedule-row" data-day="{{ day }}">
+                        <td class="day-label">
+                            {{ day }}
+                            <button type="button" class="btn-copy-day" onclick="duplicateDay('{{ day }}')" title="Copy schedule">Copy</button>
+                            <button type="button" class="btn-clear-day" onclick="clearDay('{{ day }}')" title="Clear day">Clear</button>
+                        </td>
+                        <!-- Create 2 drop zones for periods 1-2 -->
+                        {% for i in range(1, 3) %}
+                        <td class="drop-zone" 
+                            id="cell-{{ day }}-{{ i }}"
+                            ondrop="drop(event, '{{ day }}', '{{ i }}')" 
+                            ondragover="allowDrop(event)"
+                            ondragleave="leaveDrop(event)">
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <div class="form-actions">
+                <button type="submit" class="btn-generate">Generate Timetable</button>
+                <button type="button" class="btn-generate btn-secondary" onclick="clearSchedule()">Clear Schedule</button>
+                <button type="button" class="btn-generate btn-secondary" id="btn-undo" onclick="undo()" disabled style="opacity: 0.6; cursor: not-allowed;">Undo</button>
+                <button type="button" class="btn-generate btn-secondary" id="btn-redo" onclick="redo()" disabled style="opacity: 0.6; cursor: not-allowed;">Redo</button>
+                <button type="button" class="btn-generate btn-secondary" onclick="clearHistory()" title="Clear Undo/Redo History">Clear History</button>
+                <button type="button" class="btn-generate btn-secondary" onclick="resetAllData()" title="Reset application to factory defaults" style="background-color: #dc3545; color: white;">Reset All Data</button>
+            </div>
+        </form>
+    </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="helpModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeHelp()">&times;</span>
+            <h2 style="text-align: center; margin-top: 0;">How to Use</h2>
+            
+            <div class="help-section">
+                <h4>1. Setup Subjects</h4>
+                <ul>
+                    <li>Enter a subject name and pick a color in the "Subject Pool" section.</li>
+                    <li>Click <strong>Add</strong> to create a draggable subject block.</li>
+                </ul>
+            </div>
+
+            <div class="help-section">
+                <h4>2. Configure Schedule</h4>
+                <ul>
+                    <li>Use <strong>Time Slot Settings</strong> to add/remove slots and set durations.</li>
+                    <li>Use <strong>Break Settings</strong> to add breaks (e.g., Lunch) after specific slots.</li>
+                </ul>
+            </div>
+
+            <div class="help-section">
+                <h4>3. Build Timetable</h4>
+                <ul>
+                    <li>Drag subjects from the pool and drop them into the grid cells.</li>
+                    <li>Select the type (Normal/Lab) and add optional info (Room number, etc.).</li>
+                    <li>Use the <strong>Copy</strong> button on a day row to duplicate that day's schedule.</li>
+                </ul>
+            </div>
+
+            <div class="help-section">
+                <h4>4. Generate & Export</h4>
+                <ul>
+                    <li>Click <strong>Generate Timetable</strong> to view the final schedule.</li>
+                    <li>You can download it as a PDF or Export to Excel.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let historyStack = [];
+        let redoStack = [];
+        let isRestoring = false;
+
+        function addSubjectToPool() {
+            const input = document.getElementById('new-subject-name');
+            const colorInput = document.getElementById('new-subject-color');
+            const name = input.value.trim();
+            const color = colorInput.value;
+            if (!name) return;
+            
+            // Check for duplicates
+            const existingSubjects = Array.from(document.querySelectorAll('.draggable-subject'))
+                                          .map(el => el.getAttribute('data-subject'));
+            if (existingSubjects.includes(name)) {
+                alert('Subject "' + name + '" already exists in the pool!');
+                return;
+            }
+
+            const div = document.createElement('div');
+            div.className = 'draggable-subject';
+            div.draggable = true;
+            div.setAttribute('data-subject', name);
+            div.setAttribute('data-color', color);
+            div.style.backgroundColor = color;
+            div.style.color = '#fff'; // Ensure text is readable
+            div.style.textShadow = '0 1px 2px rgba(0,0,0,0.3)';
+            div.innerHTML = `${name} <span class="remove-subject" onclick="removeSubjectFromPool(this)">×</span>`;
+            div.ondragstart = drag;
+            
+            document.getElementById('subject-pool').appendChild(div);
+            input.value = '';
+            saveState();
+        }
+
+        function drag(ev) {
+            const data = {
+                name: ev.target.getAttribute('data-subject') || ev.target.textContent,
+                color: ev.target.getAttribute('data-color') || '#007bff'
+            };
+            // Send as JSON string
+            ev.dataTransfer.setData("text/plain", JSON.stringify(data));
+        }
+
+        function allowDrop(ev) {
+            ev.preventDefault();
+            // Highlight cell
+            if (ev.target.classList.contains('drop-zone')) {
+                ev.target.classList.add('drag-over');
+            }
+        }
+
+        function leaveDrop(ev) {
+            if (ev.target.classList.contains('drop-zone')) {
+                ev.target.classList.remove('drag-over');
+            }
+        }
+
+        function drop(ev, day, period) {
+            ev.preventDefault();
+            // Remove highlight
+            const dropTarget = ev.target.closest('.drop-zone');
+            if (dropTarget) dropTarget.classList.remove('drag-over');
+            
+            // If dropped on an existing item, find the parent cell
+            const cell = dropTarget || ev.target.closest('td');
+            if (!cell) return;
+
+            let subjectName, color;
+            try {
+                const data = JSON.parse(ev.dataTransfer.getData("text/plain"));
+                subjectName = data.name;
+                color = data.color;
+            } catch (e) {
+                subjectName = ev.dataTransfer.getData("text");
+                color = '#007bff';
+            }
+            
+            // Create the scheduled item block
+            const item = document.createElement('div');
+            item.className = 'scheduled-item';
+            
+            item.innerHTML = `
+                <span class="remove-btn" onclick="removeItem(this)">×</span>
+                <strong style="color: ${color}">${subjectName}</strong>
+                
+                <!-- Hidden inputs for form submission -->
+                <input type="hidden" name="subject" value="${subjectName}">
+                <input type="hidden" name="color" value="${color}">
+                <input type="hidden" name="day" value="${day}">
+                <input type="hidden" name="period" value="${period}">
+                
+                <!-- Visible inputs for details -->
+                <select name="duration" onchange="saveState()">
+                    <option value="normal">Normal</option>
+                    <option value="lab">Lab (2 slots)</option>
+                    <option value="lab3">Lab (3 slots)</option>
+                </select>
+                <input type="text" name="info" placeholder="Info..." onchange="saveState()">
+            `;
+            
+            item.style.borderLeft = `4px solid ${color}`;
+            cell.appendChild(item);
+            saveState();
+        }
+
+        function removeItem(btn) {
+            btn.parentElement.remove();
+            saveState();
+        }
+
+        function removeSubjectFromPool(span) {
+            span.parentElement.remove();
+            saveState();
+        }
+
+        function clearSchedule() {
+            if (confirm('Are you sure you want to clear the entire schedule?')) {
+                document.querySelectorAll('.scheduled-item').forEach(el => el.remove());
+                saveState();
+            }
+        }
+
+        function saveState() {
+            const state = {
+                subjects: [],
+                schedule: [],
+                breakSettings: {},
+                timeSettings: {}
+            };
+            // Save Subjects
+            document.querySelectorAll('.draggable-subject').forEach(el => {
+                state.subjects.push({
+                    name: el.getAttribute('data-subject') || el.textContent.replace('×', '').trim(),
+                    color: el.getAttribute('data-color') || '#007bff'
+                });
+            });
+            
+            // Save Schedule Items
+            document.querySelectorAll('.scheduled-item').forEach(item => {
+                state.schedule.push({
+                    subject: item.querySelector('input[name="subject"]').value,
+                    color: item.querySelector('input[name="color"]').value,
+                    day: item.querySelector('input[name="day"]').value,
+                    period: item.querySelector('input[name="period"]').value,
+                    duration: item.querySelector('select[name="duration"]').value,
+                    info: item.querySelector('input[name="info"]').value
+                });
+            });
+            
+            // Save Break Settings
+            state.breaks = [];
+            state.breaksEnabled = document.getElementById('breaks_enabled').checked;
+            const breakRows = document.querySelectorAll('.break-row');
+            breakRows.forEach(row => {
+                state.breaks.push({
+                    name: row.querySelector('input[name="break_name"]').value,
+                    start: row.querySelector('input[name="break_start"]').value,
+                    end: row.querySelector('input[name="break_end"]').value
+                });
+            });
+
+            // Save Time Settings
+            state.timeSettings = {};
+            state.totalSlots = document.getElementById('total_slots').value;
+            const total = parseInt(state.totalSlots);
+            for (let i = 1; i <= total; i++) {
+                state.timeSettings[`slot_${i}`] = document.querySelector(`input[name="slot_${i}"]`)?.value;
+                state.timeSettings[`duration_${i}`] = document.querySelector(`input[name="duration_${i}"]`)?.value;
+            }
+
+            // Push previous state to history before overwriting
+            const prevState = localStorage.getItem('timetableState');
+            if (prevState) {
+                historyStack.push(prevState);
+                if (historyStack.length > 50) historyStack.shift(); // Limit history size
+                updateUndoButton();
+            }
+
+            // Clear redo stack on new action
+            if (redoStack.length > 0) {
+                redoStack = [];
+                updateRedoButton();
+            }
+
+            localStorage.setItem('timetableState', JSON.stringify(state));
+        }
+
+        function updateUndoButton() {
+            const btn = document.getElementById('btn-undo');
+            if (historyStack.length > 0) {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
+            } else {
+                btn.disabled = true;
+                btn.style.opacity = '0.6';
+                btn.style.cursor = 'not-allowed';
+            }
+        }
+
+        function updateRedoButton() {
+            const btn = document.getElementById('btn-redo');
+            if (redoStack.length > 0) {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
+            } else {
+                btn.disabled = true;
+                btn.style.opacity = '0.6';
+                btn.style.cursor = 'not-allowed';
+            }
+        }
+
+        function loadState() {
+            const state = JSON.parse(localStorage.getItem('timetableState'));
+            if (!state) return;
+            
+            
+            // Fix: If saved state has old default (6 slots) but slots > 2 are unused, reset to new default (2)
+            const storedSlots = parseInt(state.totalSlots);
+            if (storedSlots === 6) {
+                const hasHighSlots = state.schedule && state.schedule.some(item => parseInt(item.period) > 2);
+                if (!hasHighSlots) {
+                    state.totalSlots = 2;
+                    localStorage.setItem('timetableState', JSON.stringify(state));
+                }
+            }
+            
+            restoreState(state);
+            updateUndoButton();
+            updateRedoButton();
+        }
+
+        function restoreState(state) {
+            isRestoring = true;
+            
+            // 1. Restore Time Settings (Structure) - Must be first to create slots
+            if (state.timeSettings) {
+                // Restore slot count first
+                const targetSlots = parseInt(state.totalSlots || 2);
+                let currentSlots = parseInt(document.getElementById('total_slots').value);
+                
+                // Add slots if needed
+                while (currentSlots < targetSlots) {
+                    addSlot();
+                    currentSlots++;
+                }
+                
+                // Remove slots if needed
+                while (currentSlots > targetSlots) {
+                    removeSlot();
+                    currentSlots--;
+                }
+
+                for (let i = 1; i <= targetSlots; i++) {
+                    if (state.timeSettings[`slot_${i}`]) { const el = document.querySelector(`input[name="slot_${i}"]`); if(el) el.value = state.timeSettings[`slot_${i}`]; }
+                    if (state.timeSettings[`duration_${i}`]) { const el = document.querySelector(`input[name="duration_${i}"]`); if(el) el.value = state.timeSettings[`duration_${i}`]; }
+                }
+            }
+
+            // Restore Subjects
+            const pool = document.getElementById('subject-pool');
+            pool.innerHTML = ''; // Clear existing
+            state.subjects.forEach(sub => {
+                // Handle backward compatibility if stored as string
+                const name = typeof sub === 'string' ? sub : sub.name;
+                const color = typeof sub === 'string' ? '#007bff' : sub.color;
+
+                const div = document.createElement('div');
+                div.className = 'draggable-subject';
+                div.draggable = true;
+                div.setAttribute('data-subject', name);
+                div.setAttribute('data-color', color);
+                div.style.backgroundColor = color;
+                div.style.color = '#fff';
+                div.style.textShadow = '0 1px 2px rgba(0,0,0,0.3)';
+                div.innerHTML = `${name} <span class="remove-subject" onclick="removeSubjectFromPool(this)">×</span>`;
+                div.ondragstart = drag;
+                pool.appendChild(div);
+            });
+
+            // Restore Schedule
+            // Clear existing items first
+            document.querySelectorAll('.scheduled-item').forEach(el => el.remove());
+            
+            // Rebuild items
+            state.schedule.forEach(data => {
+                const cell = document.getElementById(`cell-${data.day}-${data.period}`);
+                if (cell) {
+                    const item = document.createElement('div');
+                    item.className = 'scheduled-item';
+                    item.style.borderLeft = `4px solid ${data.color || '#007bff'}`;
+                    item.innerHTML = `
+                        <span class="remove-btn" onclick="removeItem(this)">×</span>
+                        <strong style="color: ${data.color || '#007bff'}">${data.subject}</strong>
+                        <input type="hidden" name="subject" value="${data.subject}">
+                        <input type="hidden" name="color" value="${data.color || '#007bff'}">
+                        <input type="hidden" name="day" value="${data.day}">
+                        <input type="hidden" name="period" value="${data.period}">
+                        <select name="duration" onchange="saveState()">
+                            <option value="normal" ${data.duration === 'normal' ? 'selected' : ''}>Normal</option>
+                            <option value="lab" ${data.duration === 'lab' ? 'selected' : ''}>Lab (2 slots)</option>
+                            <option value="lab3" ${data.duration === 'lab3' ? 'selected' : ''}>Lab (3 slots)</option>
+                        </select>
+                        <input type="text" name="info" placeholder="Info..." value="${data.info || data.location || ''}" onchange="saveState()">
+                    `;
+                    cell.appendChild(item);
+                }
+            });
+
+            // Restore Break Settings
+            if (state.breaksEnabled !== undefined) {
+                document.getElementById('breaks_enabled').checked = state.breaksEnabled;
+            } else {
+                document.getElementById('breaks_enabled').checked = true;
+            }
+            
+            const breaksContainer = document.getElementById('breaks-container');
+            breaksContainer.innerHTML = '';
+            if (state.breaks && state.breaks.length > 0) {
+                state.breaks.forEach(b => addBreak(b));
+            } else if (state.breakSettings) {
+                // Migration for old single break setting
+                if (state.breakSettings.enabled !== false) {
+                    addBreak({name: state.breakSettings.name, start: state.breakSettings.start, end: state.breakSettings.end});
+                }
+            }
+            toggleBreaksEnabled();
+            isRestoring = false;
+        }
+
+        function undo() {
+            const prevStateJSON = historyStack.pop();
+            if (prevStateJSON) {
+                const currentStateJSON = localStorage.getItem('timetableState');
+                if (currentStateJSON) {
+                    redoStack.push(currentStateJSON);
+                }
+
+                const prevState = JSON.parse(prevStateJSON);
+                restoreState(prevState);
+                // We must manually save the restored state to LS so it persists on refresh,
+                // but we do NOT want to push this action to history (handled by isRestoring=false check in saveState, but here we call setItem directly)
+                localStorage.setItem('timetableState', prevStateJSON);
+                updateUndoButton();
+                updateRedoButton();
+            }
+        }
+
+        function redo() {
+            const nextStateJSON = redoStack.pop();
+            if (nextStateJSON) {
+                const currentStateJSON = localStorage.getItem('timetableState');
+                if (currentStateJSON) {
+                    historyStack.push(currentStateJSON);
+                }
+
+                const nextState = JSON.parse(nextStateJSON);
+                restoreState(nextState);
+                localStorage.setItem('timetableState', nextStateJSON);
+                updateUndoButton();
+                updateRedoButton();
+            }
+        }
+
+        function clearHistory() {
+            if (confirm("Are you sure you want to clear the undo/redo history?")) {
+                historyStack = [];
+                redoStack = [];
+                updateUndoButton();
+                updateRedoButton();
+            }
+        }
+
+        function toggleSection(id) {
+            const el = document.getElementById(id);
+            const icon = document.getElementById('icon-' + id);
+            if (el.style.display === 'none') {
+                el.style.display = (id === 'time-settings') ? 'grid' : 'block';
+                icon.textContent = '▼';
+            } else {
+                el.style.display = 'none';
+                icon.textContent = '▶';
+            }
+        }
+
+        function toggleBreaksEnabled() {
+            const enabled = document.getElementById('breaks_enabled').checked;
+            const content = document.getElementById('breaks-content');
+            content.style.display = enabled ? 'block' : 'none';
+            const inputs = content.querySelectorAll('input, button');
+            inputs.forEach(input => input.disabled = !enabled);
+        }
+
+        function timeToMinutes(timeStr) {
+            if (!timeStr) return 0;
+            const [hours, minutes] = timeStr.split(':').map(Number);
+            return hours * 60 + minutes;
+        }
+
+        function minutesToTime(mins) {
+            let h = Math.floor(mins / 60);
+            let m = mins % 60;
+            if (h >= 24) h -= 24;
+            return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+        }
+
+        function validateTimeSlots() {
+            // Check Slots 1-3
+            for (let i = 1; i < 3; i++) {
+                checkOverlap(i, i + 1);
+            }
+            
+            // Check Slot 3 vs Break
+            const slot3Start = document.querySelector('input[name="slot_3"]').value;
+            const slot3Dur = parseInt(document.querySelector('input[name="duration_3"]').value) || 0;
+            
+            // Simple validation for first break if exists
+            const firstBreakStart = document.querySelector('input[name="break_start"]');
+            if (firstBreakStart && slot3Start) {
+                const bStart = timeToMinutes(firstBreakStart.value);
+                const s3End = timeToMinutes(slot3Start) + slot3Dur;
+                if (s3End > bStart) {
+                    // alert(`Warning: Slot 3 ends at ${minutesToTime(s3End)}, overlapping with Break start.`);
+                }
+            }
+
+            // Check Slots 4-6 (and others)
+            for (let i = 4; i < 6; i++) {
+                checkOverlap(i, i + 1);
+            }
+        }
+
+        function checkOverlap(currentSlotNum, nextSlotNum) {
+            const currentStart = document.querySelector(`input[name="slot_${currentSlotNum}"]`).value;
+            const currentDur = parseInt(document.querySelector(`input[name="duration_${currentSlotNum}"]`).value) || 0;
+            const nextStart = document.querySelector(`input[name="slot_${nextSlotNum}"]`).value;
+
+            if (currentStart && nextStart) {
+                const currentEnd = timeToMinutes(currentStart) + currentDur;
+                const nextStartMins = timeToMinutes(nextStart);
+                if (currentEnd > nextStartMins) {
+                    alert(`Warning: Slot ${currentSlotNum} ends at ${minutesToTime(currentEnd)}, overlapping with Slot ${nextSlotNum} start (${nextStart}).`);
+                }
+            }
+        }
+
+        function addSlot() {
+            const totalInput = document.getElementById('total_slots');
+            let count = parseInt(totalInput.value);
+            count++;
+            totalInput.value = count;
+
+            // 1. Add Input Fields
+            const container = document.getElementById('time-slots-container');
+            const div = document.createElement('div');
+            div.className = 'slot-row';
+            div.style.cssText = 'grid-column: span 2; display: flex; gap: 10px; align-items: flex-end; border-bottom: 1px solid #f0f0f0; padding-bottom: 5px;';
+            div.innerHTML = `
+                <div style="flex: 1;">
+                    <label style="display:block; font-size: 0.8rem; color: #666; margin-bottom: 2px;">Slot ${count} Start</label>
+                    <input type="time" name="slot_${count}" form="schedule-form" onchange="validateTimeSlots(); saveState()" style="width: 100%; padding: 6px; border: 1px solid var(--input-border); border-radius: 4px; box-sizing: border-box; font-size: 0.85rem; background: var(--input-bg); color: var(--text-primary);">
+                </div>
+                <div style="flex: 1;">
+                    <label style="display:block; font-size: 0.8rem; color: #666; margin-bottom: 2px;">Duration (m)</label>
+                    <input type="number" name="duration_${count}" form="schedule-form" value="55" onchange="validateTimeSlots(); saveState()" style="width: 100%; padding: 6px; border: 1px solid var(--input-border); border-radius: 4px; box-sizing: border-box; font-size: 0.85rem; background: var(--input-bg); color: var(--text-primary);">
+                </div>
+            `;
+            container.appendChild(div);
+
+            // 2. Add Table Header
+            const headerRow = document.getElementById('schedule-header-row');
+            const th = document.createElement('th');
+            th.textContent = count;
+            headerRow.appendChild(th);
+
+            // 3. Add Table Cells
+            document.querySelectorAll('.schedule-row').forEach(row => {
+                const day = row.getAttribute('data-day');
+                const td = document.createElement('td');
+                td.className = 'drop-zone';
+                td.id = `cell-${day}-${count}`;
+                td.ondrop = function(event) { drop(event, day, count.toString()); };
+                td.ondragover = allowDrop;
+                td.ondragleave = leaveDrop;
+                row.appendChild(td);
+            });
+            
+            if (!isRestoring) saveState();
+        }
+
+        function addBreak(data = null) {
+            const container = document.getElementById('breaks-container');
+            const div = document.createElement('div');
+            div.className = 'break-row';
+            
+            const name = data ? data.name : 'Break';
+            const start = data ? data.start : '11:00';
+            const end = data ? data.end : '11:30';
+            const after = data ? data.after : '3';
+
+            div.innerHTML = `
+                <div class="break-row-field">
+                    <label>Label</label>
+                    <input type="text" name="break_name" form="schedule-form" value="${name}" onchange="saveState()">
+                </div>
+                <div class="break-row-field break-row-flex">
+                    <div style="flex: 1;">
+                        <label>Start</label>
+                        <input type="time" name="break_start" form="schedule-form" value="${start}" onchange="saveState()">
+                    </div>
+                    <div style="flex: 1;">
+                        <label>End</label>
+                        <input type="time" name="break_end" form="schedule-form" value="${end}" onchange="saveState()">
+                    </div>
+                </div>
+            `;
+            container.appendChild(div);
+            if (!isRestoring) saveState();
+        }
+
+        function removeBreak() {
+            const container = document.getElementById('breaks-container');
+            if (container.lastElementChild) {
+                container.removeChild(container.lastElementChild);
+                if (!isRestoring) saveState();
+            }
+        }
+
+        function removeSlot() {
+            const totalInput = document.getElementById('total_slots');
+            let count = parseInt(totalInput.value);
+            
+            // Only allow removing slots that were added (keep default 2)
+            if (count <= 2) {
+                alert("Cannot remove default slots.");
+                return;
+            }
+
+            // 1. Remove Input Fields
+            const container = document.getElementById('time-slots-container');
+            if (container.lastElementChild) container.removeChild(container.lastElementChild);
+
+            // 2. Remove Table Header
+            const headerRow = document.getElementById('schedule-header-row');
+            if (headerRow.lastElementChild) headerRow.removeChild(headerRow.lastElementChild);
+
+            // 3. Remove Table Cells
+            document.querySelectorAll('.schedule-row').forEach(row => {
+                if (row.lastElementChild) row.removeChild(row.lastElementChild);
+            });
+
+            count--;
+            totalInput.value = count;
+            if (!isRestoring) saveState();
+        }
+
+        function clearAllSlots() {
+            const totalInput = document.getElementById('total_slots');
+            let count = parseInt(totalInput.value);
+            
+            if (count <= 2) return;
+
+            if (confirm("Are you sure you want to reset to the default 2 slots? This will remove any extra slots.")) {
+                const container = document.getElementById('time-slots-container');
+                const headerRow = document.getElementById('schedule-header-row');
+                const rows = document.querySelectorAll('.schedule-row');
+
+                while (count > 2) {
+                    if (container.lastElementChild) container.removeChild(container.lastElementChild);
+                    if (headerRow.lastElementChild) headerRow.removeChild(headerRow.lastElementChild);
+                    rows.forEach(row => {
+                        if (row.lastElementChild) row.removeChild(row.lastElementChild);
+                    });
+                    count--;
+                }
+                totalInput.value = count;
+                saveState();
+            }
+        }
+
+        function toggleTheme() {
+            const body = document.body;
+            const currentTheme = body.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            body.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+        }
+
+        function duplicateDay(sourceDay) {
+            const rows = document.querySelectorAll('.schedule-row');
+            const validDays = Array.from(rows).map(r => r.getAttribute('data-day'));
+            
+            const targetDay = prompt(`Copy ${sourceDay}'s schedule to which day?\nValid days: ${validDays.join(', ')}`);
+            
+            if (!targetDay) return;
+            
+            const targetDayMatch = validDays.find(d => d.toLowerCase() === targetDay.toLowerCase());
+            
+            if (!targetDayMatch) {
+                alert("Invalid day selected.");
+                return;
+            }
+            
+            if (targetDayMatch === sourceDay) {
+                alert("Cannot copy to the same day.");
+                return;
+            }
+
+            if (!confirm(`This will replace all classes on ${targetDayMatch} with classes from ${sourceDay}. Are you sure?`)) return;
+
+            const totalSlots = parseInt(document.getElementById('total_slots').value);
+
+            // 1. Clear target day
+            for (let i = 1; i <= totalSlots; i++) {
+                const cell = document.getElementById(`cell-${targetDayMatch}-${i}`);
+                if (cell) cell.innerHTML = '';
+            }
+
+            // 2. Copy items
+            for (let i = 1; i <= totalSlots; i++) {
+                const srcCell = document.getElementById(`cell-${sourceDay}-${i}`);
+                const tgtCell = document.getElementById(`cell-${targetDayMatch}-${i}`);
+                
+                if (srcCell && tgtCell) {
+                    const items = srcCell.querySelectorAll('.scheduled-item');
+                    items.forEach(item => {
+                        const clone = item.cloneNode(true);
+                        // Update hidden input for day
+                        const dayInput = clone.querySelector('input[name="day"]');
+                        if (dayInput) dayInput.value = targetDayMatch;
+                        
+                        tgtCell.appendChild(clone);
+                    });
+                }
+            }
+            
+            saveState();
+        }
+
+        function clearDay(day) {
+            if (!confirm(`Are you sure you want to clear all classes for ${day}?`)) return;
+            
+            const totalSlots = parseInt(document.getElementById('total_slots').value);
+            for (let i = 1; i <= totalSlots; i++) {
+                const cell = document.getElementById(`cell-${day}-${i}`);
+                if (cell) cell.innerHTML = '';
+            }
+            saveState();
+        }
+
+        function resetAllData() {
+            if (confirm("Are you sure you want to reset ALL data? This will wipe your schedule, settings, subjects, and theme. This action cannot be undone.")) {
+                localStorage.clear();
+                location.reload();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            // Allow default browser undo/redo for input fields
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
+                return;
+            }
+
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    redo();
+                } else {
+                    undo();
+                }
+            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+                e.preventDefault();
+                redo();
+            }
+        });
+
+        function openHelp() {
+            document.getElementById('helpModal').style.display = 'block';
+        }
+        function closeHelp() {
+            document.getElementById('helpModal').style.display = 'none';
+        }
+        window.onclick = function(event) {
+            const modal = document.getElementById('helpModal');
+            if (event.target == modal) modal.style.display = "none";
+        }
+    </script>
+</body>
+</html>
