@@ -94,6 +94,7 @@
         <form action="/generate" method="POST" id="schedule-form" onsubmit="saveState()">
             <input type="hidden" name="total_slots" id="total_slots" value="2">
             <h3>2. Arrange Schedule</h3>
+            <div class="schedule-wrapper">
             <table class="schedule-table" id="schedule-table">
                 <thead>
                     <tr id="schedule-header-row">
@@ -123,6 +124,7 @@
                     {% endfor %}
                 </tbody>
             </table>
+            </div>
 
             <div class="form-actions">
                 <button type="submit" class="btn-generate">Generate Timetable</button>
