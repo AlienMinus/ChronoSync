@@ -1,0 +1,13 @@
+{
+  "installCommand": "pip install -r requirements.txt",
+  "rewrites": [
+    {
+      "source": "/static/(.*)",
+      "destination": "/static/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/app.py"
+    }
+  ]
+}
