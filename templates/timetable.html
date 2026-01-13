@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Your Weekly Timetable</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
     <button class="theme-toggle" onclick="toggleTheme()" title="Toggle Dark Mode">🌓</button>
@@ -17,7 +16,8 @@
 
     <div class="container-wide">
     <div id="timetable-pdf">
-    <h1>Weekly Class Schedule</h1>
+
+    <h1 class="screen-title">Weekly Class Schedule</h1>
 
     <div class="table-wrapper">
         <table class="view-table">
@@ -73,6 +73,7 @@
             </tbody>
         </table>
     </div>
+
     </div>
 
     <form action="/export" method="POST" id="export-form">
@@ -84,25 +85,12 @@
 
     <div class="action-buttons">
         <a href="/" class="btn-back">Edit Schedule</a>
-        <button onclick="downloadPDF()" class="btn-download">Download PDF</button>
         <button onclick="document.getElementById('export-form').submit()" class="btn-download" style="background-color: #217346;">Export Excel</button>
         <button onclick="printTimetable()" class="btn-download" style="background-color: #17a2b8;">Print</button>
     </div>
     </div>
 
     <script>
-        function downloadPDF() {
-            const element = document.getElementById('timetable-pdf');
-            const opt = {
-                margin:       0.5,
-                filename:     'timetable.pdf',
-                image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2 },
-                jsPDF:        { unit: 'in', format: 'letter', orientation: 'landscape' }
-            };
-            html2pdf().set(opt).from(element).save();
-        }
-
         function printTimetable() {
             const printWindow = window.open('', '_blank');
             const title = document.querySelector('h1').outerHTML;
